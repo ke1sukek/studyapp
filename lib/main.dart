@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'dart:developer';
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -8,19 +8,17 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 late DatabaseReference ref;
 
-void main()async{
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(//firebaseへの接続
+  await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-ref = FirebaseDatabase.instance.ref();
+  ref = FirebaseDatabase.instance.ref();
 
-await GoogleSignIn.instance.initialize();
-
-  runApp (const MaterialApp(
-    home:StudyApp()
+  runApp(const MaterialApp(
+    home: StudyApp(),
   ));
 }
 
@@ -32,35 +30,38 @@ class StudyApp extends StatefulWidget {
 }
 
 class _StudyAppState extends State<StudyApp> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;//Firebase Authインスタンス
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;//GoogleSignInインスタンス
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // インスタンス化して利用します
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  Future<UserCredential?> signInWithGoogle()async{
-  try {
-    final GoogleSignInAccount googleUser =
-        await _googleSignIn.authenticate();
+  Future<UserCredential?> signInWithGoogle() async {
+    try {
+      // 1. Google認証フローを開始
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        // ユーザーがサインインをキャンセルした場合
+        return null;
+      }
 
-    final GoogleSignInClientAuthorization? authorization =
-        await googleUser.authorizationClient.authorizationForScopes(
-      ['email'],
-    );
+      // 2. リクエストから認証詳細を取得
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
 
-    if (authorization == null) {
+      // 3. Firebase用の新しいクレデンシャルを作成
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // 4. Firebaseにサインイン
+      return await _auth.signInWithCredential(credential);
+    } catch (e) {
+      log("Googleサインインエラー: $e");
       return null;
     }
-
-    final credential = GoogleAuthProvider.credential(
-      accessToken: authorization.accessToken,
-    );
-
-    return await _auth.signInWithCredential(credential);
-  } catch (e) {
-    log("Googleサインインエラー: $e");
-    return null;
   }
-}
 
-  Future<void> signOutWithGoogle()async{
+  Future<void> signOutWithGoogle() async {
     try {
       await _googleSignIn.signOut();
       await _auth.signOut();
@@ -71,42 +72,43 @@ class _StudyAppState extends State<StudyApp> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = _auth.currentUser;
+
     return Scaffold(
       appBar: AppBar(
-        title:Text('Study App'),
+        title: const Text('Study App'),
         centerTitle: true,
         backgroundColor: Colors.lightBlue[200],
       ),
       body: Center(
         child: OutlinedButton(
           child: const Text('Send date'),
-          onPressed: ()async{
-            if(FirebaseAuth.instance.currentUser!=null){
-            await ref.child("users/${FirebaseAuth.instance.currentUser!.uid}").set({
-            "uid":FirebaseAuth.instance.currentUser!.uid,
-            "email":FirebaseAuth.instance.currentUser!.email,
-            "online":true,
-            });}
+          onPressed: () async {
+            final user = _auth.currentUser;
+            if (user != null) {
+              await ref.child("users/${user.uid}").set({
+                "uid": user.uid,
+                "email": user.email,
+                "online": true,
+              });
+            }
           },
         ),
       ),
-
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.white,
         child: Icon(
-          FirebaseAuth.instance.currentUser!=null//三項演算子条件
-          ? Icons.logout//真
-          : Icons.login,//偽
+          currentUser != null ? Icons.logout : Icons.login,
         ),
-        onPressed: ()async{
-          if(FirebaseAuth.instance.currentUser!=null){
+        onPressed: () async {
+          if (_auth.currentUser != null) {
             await signOutWithGoogle();
-            setState((){});
-          }else{
+          } else {
             await signInWithGoogle();
-            setState((){});
           }
-        }),
+          setState(() {});
+        },
+      ),
     );
   }
 }
