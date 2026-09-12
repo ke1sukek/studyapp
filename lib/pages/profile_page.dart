@@ -1,77 +1,170 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../providers/auth_provider.dart';
+import '../services/auth_service.dart';
+import '../services/database_service.dart';
 
-class ProfilePage extends ConsumerWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authStateProvider);
+  State<ProfilePage> createState() => _ProfilePageState();
+}
 
+class _ProfilePageState extends State<ProfilePage> {
+  final databaseService = DatabaseService();
+  final authService = AuthService();
+
+  final nameController = TextEditingController();
+
+  bool isLoggingOut = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    loadUser();
+  }
+
+  Future<void> loadUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final userData = await databaseService.getUser(user.uid);
+
+      if (!mounted) return;
+
+      if (userData != null) {
+        nameController.text = userData['name'] ?? '';
+      } else {
+        nameController.text = user.displayName ?? '';
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      nameController.text = user.displayName ?? '';
+    }
+  }
+
+  Future<void> updateName() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    final name = nameController.text.trim();
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ニックネームを入力してください'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await databaseService.updateName(
+        uid: user.uid,
+        name: name,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ニックネームを変更しました'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('変更エラー: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> logout() async {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setState(() {
+      isLoggingOut = true;
+    });
+
+    try {
+      await authService.signOut();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoggingOut = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ログアウトエラー: $e'),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: const Text('プロフィール'),
       ),
-      body: authState.when(
-        loading: () {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        },
-
-        error: (error, stackTrace) {
-          return Center(
-            child: Text('エラー: $error'),
-          );
-        },
-
-        data: (user) {
-          if (user == null) {
-            return const Center(
-              child: Text('ログインしていません'),
-            );
-          }
-
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  user.displayName ?? '名前なし',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Text(
-                  user.email ?? 'メールなし',
-                ),
-
-                const SizedBox(height: 10),
-
-                Text(
-                  'UID: ${user.uid}',
-                ),
-
-                const SizedBox(height: 30),
-
-                ElevatedButton(
-                  onPressed: () async {
-                    await ref
-                        .read(authServiceProvider)
-                        .signOut();
-                  },
-                  child: const Text('ログアウト'),
-                ),
-              ],
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'ニックネーム',
+              ),
             ),
-          );
-        },
+
+            const SizedBox(height: 10),
+
+            ElevatedButton(
+              onPressed: isLoggingOut ? null : updateName,
+              child: const Text('変更'),
+            ),
+
+            const SizedBox(height: 30),
+
+            ElevatedButton(
+              onPressed: isLoggingOut ? null : logout,
+              child: isLoggingOut
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text('ログアウト'),
+            ),
+          ],
+        ),
       ),
     );
   }
