@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,11 +12,16 @@ import '../pages/study_page.dart';
 import '../pages/search_page.dart';
 import '../pages/profile_page.dart';
 import '../widgets/modern_tab_bar.dart';
-import '../providers/auth_provider.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final authRefresh = GoRouterRefreshStream(
+    FirebaseAuth.instance.authStateChanges(),
+  );
+
   final router = GoRouter(
     initialLocation: '/home',
+
+    refreshListenable: authRefresh,
 
     redirect: (context, state) {
       final user = FirebaseAuth.instance.currentUser;
@@ -22,12 +29,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = user != null;
       final isLoginPage = state.matchedLocation == '/login';
 
-      // 未ログインならログインページへ
+      // 未ログインならログイン画面へ
       if (!isLoggedIn && !isLoginPage) {
         return '/login';
       }
 
-      // ログイン済みなのにログインページに来たらHomeへ
+      // ログイン済みならログイン画面からHomeへ
       if (isLoggedIn && isLoginPage) {
         return '/home';
       }
@@ -49,7 +56,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             navigationShell: navigationShell,
           );
         },
-
         branches: [
           StatefulShellBranch(
             routes: [
@@ -110,14 +116,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 
-  ref.listen(authStateProvider, (_, __) {
-    router.refresh();
+  ref.onDispose(() {
+    authRefresh.dispose();
+    router.dispose();
   });
-
-  ref.onDispose(router.dispose);
 
   return router;
 });
+
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+
+    _subscription = stream.asBroadcastStream().listen(
+      (_) {
+        notifyListeners();
+      },
+    );
+  }
+
+  late final StreamSubscription<dynamic> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
 
 class MainScreen extends StatelessWidget {
   final StatefulNavigationShell navigationShell;

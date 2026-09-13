@@ -53,13 +53,28 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Future<void> sendRequest(String receiverUid) async {
-    final myUid = FirebaseAuth.instance.currentUser!.uid;
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ログインしてください'),
+        ),
+      );
+      return;
+    }
+
+    final myUid = user.uid;
 
     if (myUid == receiverUid) {
       return;
     }
 
     try {
+      // 自分のユーザーデータが存在することを確認
+      await databaseService.ensureUser(user);
+
+      // 友達申請を送信
       await databaseService.sendFriendRequest(
         senderUid: myUid,
         receiverUid: receiverUid,
@@ -110,7 +125,9 @@ class _SearchPageState extends State<SearchPage> {
                     ),
                   ),
                 ),
+
                 const SizedBox(width: 10),
+
                 ElevatedButton(
                   onPressed: search,
                   child: const Text('検索'),
@@ -129,7 +146,7 @@ class _SearchPageState extends State<SearchPage> {
                 itemBuilder: (context, index) {
                   final user = users[index];
 
-                  final uid = user['uid'];
+                  final uid = user['uid'] as String;
                   final name = user['name'] ?? '';
                   final photoURL = user['photoURL'] ?? '';
 

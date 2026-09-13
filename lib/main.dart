@@ -44,13 +44,12 @@ class _StudyAppState extends State<StudyApp>
   Future<void> updateUserStatus() async {
     final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
 
     try {
-      // users/{uid} がなければ作成
       await databaseService.ensureUser(user);
-
-      // オンラインにする
       await databaseService.setOnline(user.uid);
     } catch (e) {
       debugPrint('ユーザー情報の確認エラー: $e');
@@ -63,7 +62,9 @@ class _StudyAppState extends State<StudyApp>
   ) {
     final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
 
     if (state == AppLifecycleState.resumed) {
       updateUserStatus();
